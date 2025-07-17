@@ -1,9 +1,11 @@
 package pipeline
 
+import "github.com/apache/arrow-go/v18/arrow"
+
 type Source interface {
-	Read() // add return types
+	Read() (arrow.Record, error)
 }
 
 type Sink interface {
-	Write() // add return types
+	Write(arrow.Record) (int64, error)
 }
