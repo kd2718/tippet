@@ -1,10 +1,13 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
+	"log"
+	"os"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -15,58 +18,52 @@ const (
 	dbname = "kdonati"
 )
 
+type User struct {
+	ID        int
+	Age       int
+	FirstName string
+	LastName  string
+	Email     string
+}
+
 func main() {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"dbname=%s sslmode=disable",
-		host, port, user, dbname)
-	db, err := sql.Open("postgres", psqlInfo)
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
 
-	err = db.Ping()
+	ctx := context.Background()
+	pgURL := fmt.Sprintf("postgres://%s@%s:%d/%s", user, host, port, dbname)
+	dbpool, err := pgxpool.New(ctx, pgURL)
 	if err != nil {
-		panic(err)
+		log.Fatalf("there was an error: %v", err)
 	}
 
-	db.Exec(`CREATE if not exists TABLE users (
- 	id SERIAL PRIMARY KEY,
-  	age INT,
-  	first_name TEXT,
-  	last_name TEXT,
-  	email TEXT UNIQUE NOT NULL
-	);`)
+	defer dbpool.Close()
 
-	/*
-		sqlStatement := `
-			INSERT INTO users (age, email, first_name, last_name)
-			VALUES (31, 'jon2@calhoun.io', 'Jonathan', 'Calhoun')`
-		_, err = db.Exec(sqlStatement)
-		if err != nil {
-			panic(err)
-		}
-	*/
-
-	rows, err := db.Query(`select * from users;`)
+	rows, err := dbpool.Query(ctx, "select * from users;")
 	if err != nil {
-		panic(err)
+		log.Fatalf("Query failed with %s", err)
+		os.Exit(1)
 	}
 	defer rows.Close()
 
+	var users []User
 	for rows.Next() {
-		var id int
-		var age int
-		var first_name string
-		var last_name string
-		var email string
-		err = rows.Scan(&id, &age, &first_name, &last_name, &email)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("Name: %s\n", first_name)
-	}
-	//fmt.Printf("out:\n%v\n", out.)
+		var u User
 
-	fmt.Println("Successfully connected!")
+		if err := rows.Scan(&u.ID, &u.Age, &u.FirstName, &u.LastName, &u.Email); err != nil {
+			log.Fatalf("issues getting row, %v", err)
+		}
+
+		users = append(users, u)
+
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatalf("bad stuff happened %v", err)
+		os.Exit(1)
+	}
+
+	log.Println("--------- All db rows: -------")
+	for _, user := range users {
+		log.Printf("user: %v\n", user)
+	}
+
 }
